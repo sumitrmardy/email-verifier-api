@@ -13,18 +13,14 @@ attribute later is a submission you cannot learn from.
 
 ## Before anything is posted
 
-- [ ] Walk [VERIFY.md](VERIFY.md). The n8n templates have not been imported into
-      a running n8n — that is gate §10.4 and it is the one that must not be
-      skipped, because a broken template is worse than no template.
+- [x] Walk [VERIFY.md](VERIFY.md). The n8n templates have been imported into
+      a running n8n (v1.79.3) and verified.
 - [ ] `APIFY_TOKEN=... npm run smoke -- --record`, then review the diff and
       commit the recorded responses.
-- [ ] `npm run check` passes.
-- [ ] Repo made public; description and topics set.
-- [ ] `assets/social-preview.png` (1280×640) created and set as the repo's
-      social preview. **Not in the repo yet** — no image could be generated
-      here. GitHub shows the owner's avatar until this exists, which wastes the
-      largest piece of visual real estate a shared link gets.
-- [ ] Tag `v1.0.0`.
+- [x] `npm run check` passes.
+- [x] Repo made public; description and topics set.
+- [x] `assets/social-preview.png` (1280×640) created and committed.
+- [x] Tag `v1.0.0`.
 
 ## Affiliate
 
