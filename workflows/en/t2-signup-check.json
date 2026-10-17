@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# Real-time signup check\n\nPOST `{ \"email\": \"someone@example.com\" }` to this webhook. It answers:\n\n```json\n{ \"decision\": \"allow\" | \"review\" | \"block\", \"reason\": \"...\", \"status\": \"...\", \"sub_status\": \"...\" }\n```\n\n**block** — invalid syntax, dead domain, no such mailbox, or a disposable address\n**review** — catch-all, role account, or a free provider whose mailbox cannot be confirmed\n**allow** — SMTP confirmed the mailbox exists\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n## One run per signup\n\nThis calls the Actor once per request, which suits a form. For a list, use the Google Sheets or CSV template instead — batching is far cheaper per address.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $2.00 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
+        "content": "# Real-time signup check\n\nPOST `{ \"email\": \"someone@example.com\" }` to this webhook. It answers:\n\n```json\n{ \"decision\": \"allow\" | \"review\" | \"block\", \"reason\": \"...\", \"status\": \"...\", \"sub_status\": \"...\" }\n```\n\n**block** — invalid syntax, dead domain, no such mailbox, or a disposable address\n**review** — catch-all, role account, or a free provider whose mailbox cannot be confirmed\n**allow** — SMTP confirmed the mailbox exists\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n## One run per signup\n\nThis calls the Actor once per request, which suits a form. For a list, use the Google Sheets or CSV template instead — batching is far cheaper per address.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $0.55 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
         "height": 760,
         "width": 420,
         "color": 4
@@ -144,5 +144,6 @@
   "settings": {
     "executionOrder": "v1"
   },
+  "active": false,
   "pinData": {}
 }

@@ -10,5 +10,5 @@
     "apifyConsoleUrl": "https://console.apify.com",
     "apifyTokenUrl": "https://console.apify.com/settings/integrations",
     "_price": "Pricing is tiered by the caller's Apify plan and the owner adjusts it to track the market, so no number may be typed anywhere else in the repo. This string is injected at build time and the Pricing tab is always linked next to it.",
-    "priceFromPer1k": "$2.00"
+    "priceFromPer1k": "$0.55"
 }

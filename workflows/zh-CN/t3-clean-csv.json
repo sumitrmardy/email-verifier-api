@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# 群发前先清洗 CSV\n\n上传 CSV 导出文件 —— Apollo、Instantly、Lemlist、HubSpot，任何带邮箱列的都行 —— 得到三份名单：\n\n**send_safe** —— SMTP 已确认邮箱存在\n**review** —— 全收域名、角色邮箱、免费邮箱服务商、邮箱已满：这些是需要你判断的，不是失败\n**drop** —— 格式错误、域名不存在、邮箱不存在\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n## 关于列名\n\n默认取第一个列名包含 `email` 的列。要换列，改第一个 Code 节点里的 `EMAIL_COLUMN`。\n\n地址是整批提交的，不是一个地址一次调用。Apify 同步请求必须在 300 秒内完成，所以批量大小要用实测值 —— 见 docs/pricing-and-batching.zh-CN.md。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $2.00 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
+        "content": "# 群发前先清洗 CSV\n\n上传 CSV 导出文件 —— Apollo、Instantly、Lemlist、HubSpot，任何带邮箱列的都行 —— 得到三份名单：\n\n**send_safe** —— SMTP 已确认邮箱存在\n**review** —— 全收域名、角色邮箱、免费邮箱服务商、邮箱已满：这些是需要你判断的，不是失败\n**drop** —— 格式错误、域名不存在、邮箱不存在\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n## 关于列名\n\n默认取第一个列名包含 `email` 的列。要换列，改第一个 Code 节点里的 `EMAIL_COLUMN`。\n\n地址是整批提交的，不是一个地址一次调用。Apify 同步请求必须在 300 秒内完成，所以批量大小要用实测值 —— 见 docs/pricing-and-batching.zh-CN.md。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $0.55 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
         "height": 880,
         "width": 420,
         "color": 4
@@ -320,5 +320,6 @@
   "settings": {
     "executionOrder": "v1"
   },
+  "active": false,
   "pinData": {}
 }

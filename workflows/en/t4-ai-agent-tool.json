@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# Give an agent the ability to check an address\n\nAn AI Agent with one tool: the email verifier. Ask it things like\n\n- *\"Is john@acme.com safe to send to?\"*\n- *\"Check these five addresses and tell me which to drop\"*\n- *\"Why is this one risky?\"*\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n**3. Connect a chat model** on the model node.\n\n## Why the system prompt is long\n\nAn agent given raw verdicts will guess at what they mean, and it will guess confidently. The prompt carries the action table so the agent recommends rather than improvises — and tells it that `unknown` means *we could not find out*, not *bad address*. That distinction is the whole reason this data is worth paying for.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $2.00 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
+        "content": "# Give an agent the ability to check an address\n\nAn AI Agent with one tool: the email verifier. Ask it things like\n\n- *\"Is john@acme.com safe to send to?\"*\n- *\"Check these five addresses and tell me which to drop\"*\n- *\"Why is this one risky?\"*\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n**3. Connect a chat model** on the model node.\n\n## Why the system prompt is long\n\nAn agent given raw verdicts will guess at what they mean, and it will guess confidently. The prompt carries the action table so the agent recommends rather than improvises — and tells it that `unknown` means *we could not find out*, not *bad address*. That distinction is the whole reason this data is worth paying for.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $0.55 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
         "height": 800,
         "width": 420,
         "color": 4
@@ -134,5 +134,6 @@
   "settings": {
     "executionOrder": "v1"
   },
+  "active": false,
   "pinData": {}
 }

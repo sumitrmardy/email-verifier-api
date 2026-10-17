@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# 给 Agent 一个查邮箱的能力\n\n一个只带邮箱验证工具的 AI Agent。可以这样问：\n\n- *\"john@acme.com 能发吗？\"*\n- *\"查这五个地址，告诉我哪些该删\"*\n- *\"这个为什么算 risky？\"*\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n**3. 在模型节点上连接一个 chat model。**\n\n## 为什么 system prompt 这么长\n\n只给 Agent 原始结论，它会自己猜含义，而且猜得很笃定。prompt 里带了处置对照表，让它给建议而不是即兴发挥 —— 并且明确告诉它 `unknown` 的意思是*没查出来*，不是*坏地址*。这个区分正是这份数据值得付费的原因。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $2.00 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
+        "content": "# 给 Agent 一个查邮箱的能力\n\n一个只带邮箱验证工具的 AI Agent。可以这样问：\n\n- *\"john@acme.com 能发吗？\"*\n- *\"查这五个地址，告诉我哪些该删\"*\n- *\"这个为什么算 risky？\"*\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n**3. 在模型节点上连接一个 chat model。**\n\n## 为什么 system prompt 这么长\n\n只给 Agent 原始结论，它会自己猜含义，而且猜得很笃定。prompt 里带了处置对照表，让它给建议而不是即兴发挥 —— 并且明确告诉它 `unknown` 的意思是*没查出来*，不是*坏地址*。这个区分正是这份数据值得付费的原因。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $0.55 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
         "height": 800,
         "width": 420,
         "color": 4
@@ -134,5 +134,6 @@
   "settings": {
     "executionOrder": "v1"
   },
+  "active": false,
   "pinData": {}
 }

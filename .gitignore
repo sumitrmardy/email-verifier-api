@@ -10,3 +10,4 @@ node_modules/
 # recorded real responses are the evidence that the published schema is right.
 # Anything else the scripts produce is not.
 scratch/
+tasks/

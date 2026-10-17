@@ -3,7 +3,7 @@
   "nodes": [
     {
       "parameters": {
-        "content": "# Verify a Google Sheets lead list\n\nReads rows that have no `status` yet, verifies them in batches, writes the verdict back next to each address. Re-running only picks up new rows, so it is safe on a schedule.\n\n## Your sheet needs these columns\n\n`email` · `status` · `sub_status` · `score` · `catch_all` · `disposable` · `verified_at`\n\nOnly `email` needs values. The rest are filled in.\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n**3. Connect Google Sheets** on the two Sheets nodes and pick your document and sheet.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $2.00 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
+        "content": "# Verify a Google Sheets lead list\n\nReads rows that have no `status` yet, verifies them in batches, writes the verdict back next to each address. Re-running only picks up new rows, so it is safe on a schedule.\n\n## Your sheet needs these columns\n\n`email` · `status` · `sub_status` · `score` · `catch_all` · `disposable` · `verified_at`\n\nOnly `email` needs values. The rest are filled in.\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n**3. Connect Google Sheets** on the two Sheets nodes and pick your document and sheet.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $0.55 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
         "height": 860,
         "width": 420,
         "color": 4
@@ -222,5 +222,6 @@
   "settings": {
     "executionOrder": "v1"
   },
+  "active": false,
   "pinData": {}
 }
