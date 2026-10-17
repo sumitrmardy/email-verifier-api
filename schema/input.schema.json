@@ -1,0 +1,53 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/sumitrmardy/email-verifier-api/schema/input.schema.json",
+    "title": "Email Verifier — request body",
+    "description": "Body for POST /v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items. Mirrors the Actor's own input schema; verified field-by-field against it.",
+    "type": "object",
+    "properties": {
+        "emails": {
+            "type": "array",
+            "title": "Emails",
+            "description": "Addresses to verify. One result record is returned per entry, in no guaranteed order — match results back by `email` or `normalized_email`, never by position.",
+            "items": { "type": "string" },
+            "examples": [["john@example.com", "someone@gmail.com", "test@mailinator.com"]]
+        },
+        "emailFileUrl": {
+            "type": "string",
+            "title": "Email file URL",
+            "description": "Public URL of a .txt (one address per line) or .csv file. Every email-shaped token in the file is picked up. Used in addition to `emails`, not instead of it.",
+            "format": "uri"
+        },
+        "concurrency": {
+            "type": "integer",
+            "title": "SMTP concurrency",
+            "description": "Parallel SMTP handshakes. Addresses are grouped by domain first, so this is really 'domains in flight'. Raising it speeds up lists with many distinct domains and does nothing for a list concentrated on a few.",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 15
+        },
+        "smtpTimeoutMs": {
+            "type": "integer",
+            "title": "SMTP timeout (ms)",
+            "description": "How long to wait for each SMTP reply before giving up on a host.",
+            "minimum": 2000,
+            "maximum": 20000,
+            "default": 8000
+        },
+        "verbose": {
+            "type": "boolean",
+            "title": "Verbose output",
+            "description": "Adds a `raw` object per record with per-layer detail (MX list, probe codes, raw SMTP text). Off by default to keep records small. Useful when investigating one address, wasteful on a list.",
+            "default": false
+        }
+    },
+    "additionalProperties": true,
+    "anyOf": [
+        { "required": ["emails"] },
+        { "required": ["emailFileUrl"] }
+    ],
+    "examples": [
+        { "emails": ["john@example.com", "someone@gmail.com"] },
+        { "emails": ["a@example.com"], "concurrency": 25, "smtpTimeoutMs": 10000 }
+    ]
+}

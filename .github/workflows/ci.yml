@@ -1,0 +1,26 @@
+name: build and validate
+
+# No live Actor calls here. CI must stay free to run on every PR, and a
+# workflow that charges money per push is a workflow people disable.
+# The paid checks live in `npm run smoke`, which a human runs deliberately.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - run: npm ci
+      - name: Build workflows for every language
+        run: npm run build
+      - name: Fail if the build changed a committed file
+        run: git diff --exit-code workflows/
+      - name: Schemas, secrets, links, workflow structure
+        run: npm run validate

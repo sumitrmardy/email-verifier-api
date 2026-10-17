@@ -1,0 +1,24 @@
+{
+    "email": "test@mailinator.com",
+    "normalized_email": "test@mailinator.com",
+    "domain": "mailinator.com",
+    "status": "risky",
+    "sub_status": "disposable",
+    "score": 20,
+    "checks": {
+        "syntax": true,
+        "domain_exists": true,
+        "mx_found": true,
+        "a_record_fallback": false,
+        "smtp_connectable": false,
+        "mailbox_exists": false,
+        "catch_all": false,
+        "disposable": true,
+        "role_based": false,
+        "free_provider": false,
+        "has_tag": false
+    },
+    "mx_record": "mail.mailinator.com",
+    "verified_at": "2026-08-18T09:17:10.721Z",
+    "duration_ms": 2
+}

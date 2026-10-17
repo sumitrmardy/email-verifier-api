@@ -1,0 +1,108 @@
+# Email Verifier — bulk email verification API
+
+Verifies whether an email address can receive mail. Four layers: RFC 5322
+syntax, DNS/MX with an A-record fallback, disposable/role/free-provider list
+checks, then a live SMTP handshake with a mandatory catch-all probe. It never
+sends an email — it reads SMTP reply codes and disconnects. There is no message
+body anywhere in the process.
+
+Runs as an Apify Actor. Callers need an Apify account and API token.
+
+## Endpoint
+
+POST https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items
+Header: Authorization: Bearer <APIFY_TOKEN>
+Header: Content-Type: application/json
+Returns: a JSON array, one object per submitted address.
+
+A synchronous run must finish within 300 seconds. For longer lists, start an
+async run and fetch the dataset afterwards.
+
+## Input
+
+{"emails": ["a@example.com", "b@example.com"]}
+
+emails         string[]   addresses to verify
+emailFileUrl   string     optional; URL of a .txt or .csv to read addresses from
+concurrency    integer    1-50, default 15; parallel SMTP sessions
+smtpTimeoutMs  integer    2000-20000, default 8000
+verbose        boolean    default false; adds a `raw` block per record
+
+Batch every address you need into ONE call. Do not loop one call per address —
+it is slower and costs the same per address. Deduplicate first; duplicates are
+charged.
+
+## Output — every field below is always present and never null
+
+email             string   your input, echoed verbatim
+normalized_email  string   lower-cased, +tag stripped, dots folded for Gmail
+domain            string
+status            enum     deliverable | undeliverable | risky | unknown
+sub_status        enum     see table below
+score             integer  0-100, a pure function of the verdict
+checks            object   11 booleans, all always present:
+                           syntax, domain_exists, mx_found, a_record_fallback,
+                           smtp_connectable, mailbox_exists, catch_all,
+                           disposable, role_based, free_provider, has_tag
+mx_record         string   may be empty, never null
+verified_at       string   ISO 8601
+duration_ms       integer
+error             string   present ONLY on unknown/internal_error
+raw               object   present ONLY when verbose:true
+
+Results return in a different order than submitted — the service groups
+addresses by domain to reuse connections. Match results by `email` or
+`normalized_email`, never by array position.
+
+## status / sub_status and what to do
+
+deliverable / valid_mailbox              Send. Mailbox confirmed.
+risky / role_based                       Shared inbox (info@, support@). Not a person.
+risky / catch_all                        Domain accepts everything; this mailbox cannot be confirmed. Low volume or enrich another way.
+risky / free_provider_unverifiable       Gmail/Outlook/Yahoo/iCloud answer identically for every address. Syntax and domain fine; mailbox unknowable.
+risky / full_mailbox                     Real mailbox, over quota. Retry in days.
+risky / disposable                       Throwaway address. Do not send; block at signup.
+unknown / greylisted                     NOT a bad address. Server asked us to retry. Retry in 30-60 minutes.
+unknown / smtp_timeout                   Server did not answer. Unverified, not invalid. Retry later.
+unknown / internal_error                 Retry once; `error` explains.
+undeliverable / invalid_syntax           Malformed. Remove.
+undeliverable / no_mx_record             Domain accepts no mail. Remove.
+undeliverable / mailbox_not_found        Server said no such user. Remove.
+
+## The distinction that matters most
+
+`undeliverable` means we found out the address is dead.
+`unknown` means we could not find out.
+
+Never describe an `unknown` result as invalid, dead or undeliverable. Say the
+check could not complete and give the retry advice above. Reporting `unknown`
+as `undeliverable` deletes real recipients from a list, permanently and
+silently, which is the failure mode this service is built to avoid.
+
+Two things cannot be verified by any SMTP-based tool: a specific mailbox on a
+free provider, and any mailbox on a catch-all domain. Those return `risky` with
+the reason rather than a guess.
+
+## Scores
+
+100 valid_mailbox (90 on A-record fallback) · 60 role_based ·
+55 free_provider_unverifiable · 50 catch_all · 45 full_mailbox ·
+40 greylisted · 30 smtp_timeout · 20 disposable ·
+5 mailbox_not_found · 0 invalid_syntax, no_mx_record, internal_error
+
+Use `status` for decisions and `score` for ranking. A single score threshold
+will eventually group greylisted (40) with disposable (20), and those need
+opposite handling.
+
+## Pricing
+
+Pay per event: one charge per address that receives a verdict, including
+undeliverable and unknown. No per-run charge. The rate is tiered by the
+caller's Apify plan — see https://apify.com/sumitr_mardy/email-verifier/pricing
+
+## Links
+
+Actor:      https://apify.com/sumitr_mardy/email-verifier
+Templates:  https://github.com/sumitrmardy/email-verifier-api
+OpenAPI:    openapi/email-verifier.openapi.yaml
+MCP:        agents/mcp/

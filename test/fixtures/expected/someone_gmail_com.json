@@ -1,0 +1,24 @@
+{
+    "email": "someone@gmail.com",
+    "normalized_email": "someone@gmail.com",
+    "domain": "gmail.com",
+    "status": "risky",
+    "sub_status": "free_provider_unverifiable",
+    "score": 55,
+    "checks": {
+        "syntax": true,
+        "domain_exists": true,
+        "mx_found": true,
+        "a_record_fallback": false,
+        "smtp_connectable": true,
+        "mailbox_exists": false,
+        "catch_all": false,
+        "disposable": false,
+        "role_based": false,
+        "free_provider": true,
+        "has_tag": false
+    },
+    "mx_record": "gmail-smtp-in.l.google.com",
+    "verified_at": "2026-08-18T09:17:10.728Z",
+    "duration_ms": 9
+}

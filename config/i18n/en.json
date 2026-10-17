@@ -1,0 +1,56 @@
+{
+    "common": {
+        "credentialNote": "## Setup (once)\n\n**1. Get an Apify token** — __link.apifyTokenUrl__\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.",
+        "costNote": "## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From __link.priceFromPer1k__ per 1,000, tiered by your Apify plan.\n\nCurrent pricing: __link.actorPricingUrl__",
+        "actorNote": "Actor: __link.actorUrl__\nTemplates & docs: __link.repoUrl__",
+        "neverSends": "This never sends an email. It opens an SMTP session, reads the reply codes and hangs up.",
+        "batchNote": "Addresses are sent in one batch per call, not one call per address. A sync Apify run has to finish inside 300 seconds, so keep batches at a size you have measured — see docs/pricing-and-batching.md."
+    },
+
+    "t1": {
+        "name": "Verify a Google Sheets lead list (Email Verifier)",
+        "sticky": "# Verify a Google Sheets lead list\n\nReads rows that have no `status` yet, verifies them in batches, writes the verdict back next to each address. Re-running only picks up new rows, so it is safe on a schedule.\n\n## Your sheet needs these columns\n\n`email` · `status` · `sub_status` · `score` · `catch_all` · `disposable` · `verified_at`\n\nOnly `email` needs values. The rest are filled in.\n\n__i18n.common.credentialNote__\n\n**3. Connect Google Sheets** on the two Sheets nodes and pick your document and sheet.\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "stickyWhy": "## Why results are matched by address, not by row order\n\nThe Actor groups addresses by domain to reuse connections, so results come back in a different order than they went in. Matching by position would silently put the wrong verdict on the wrong person.\n\nThis workflow builds a lookup keyed on `email` and `normalized_email` — `normalized_email` is there because a Gmail address written `J.Doe+news@gmail.com` comes back as `jdoe@gmail.com`.",
+        "readName": "Read unverified rows",
+        "chunkName": "Chunk into batches",
+        "verifyName": "Verify emails (Apify)",
+        "mapName": "Match verdicts back to rows",
+        "writeName": "Write verdicts to sheet"
+    },
+
+    "t2": {
+        "name": "Block disposable emails at signup (Email Verifier)",
+        "sticky": "# Real-time signup check\n\nPOST `{ \"email\": \"someone@example.com\" }` to this webhook. It answers:\n\n```json\n{ \"decision\": \"allow\" | \"review\" | \"block\", \"reason\": \"...\", \"status\": \"...\", \"sub_status\": \"...\" }\n```\n\n**block** — invalid syntax, dead domain, no such mailbox, or a disposable address\n**review** — catch-all, role account, or a free provider whose mailbox cannot be confirmed\n**allow** — SMTP confirmed the mailbox exists\n\n__i18n.common.credentialNote__\n\n## One run per signup\n\nThis calls the Actor once per request, which suits a form. For a list, use the Google Sheets or CSV template instead — batching is far cheaper per address.\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "stickyPolicy": "## Change the policy here, not in the response node\n\nThe decision is one small block of JavaScript on purpose: your rules are not ours. A B2B product usually wants `role_based` allowed; a consumer app usually does not. A trial signup might accept `catch_all`; a paid plan might not.\n\n`unknown` means the check could not complete — greylisting, a timeout. Blocking on `unknown` rejects real customers for a network hiccup, so it is `review` here.",
+        "webhookName": "Signup webhook",
+        "verifyName": "Verify email (Apify)",
+        "decideName": "Apply signup policy",
+        "respondName": "Respond with decision"
+    },
+
+    "t3": {
+        "name": "Clean a CSV list before cold email (Email Verifier)",
+        "sticky": "# Clean a CSV before you send\n\nUpload a CSV export — Apollo, Instantly, Lemlist, HubSpot, anything with an email column — and get back three lists:\n\n**send_safe** — SMTP confirmed the mailbox exists\n**review** — catch-all, role account, free provider, or full mailbox: real decisions, not failures\n**drop** — bad syntax, dead domain, no such mailbox\n\n__i18n.common.credentialNote__\n\n## The column\n\nThe first column whose name contains `email` is used. Change `EMAIL_COLUMN` in the first Code node to pick a different one.\n\n__i18n.common.batchNote__\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "stickyRetry": "## Why there is a wait in the middle\n\n`unknown/greylisted` is not a bad address. Greylisting is a server deliberately rejecting a first attempt and accepting a retry — it is an anti-spam technique, and a verifier that reports those as undeliverable throws away good contacts.\n\nSo greylisted rows wait and are verified once more before the lists are written. Rows that are still unknown after the retry end up in **review**, which is the honest place for them.\n\nThe wait is 60 minutes by default. Shorter rarely helps; many servers want 15–60.",
+        "uploadName": "Upload CSV",
+        "extractName": "Read CSV rows",
+        "prepareName": "Dedupe and chunk",
+        "verifyName": "Verify emails (Apify)",
+        "splitName": "Split into send / review / drop",
+        "waitName": "Wait before retrying greylisted",
+        "retryName": "Re-verify greylisted (Apify)",
+        "mergeName": "Merge retried rows",
+        "sendFileName": "send_safe.csv",
+        "reviewFileName": "review.csv",
+        "dropFileName": "drop.csv"
+    },
+
+    "t4": {
+        "name": "AI agent tool: is this email safe to send? (Email Verifier)",
+        "sticky": "# Give an agent the ability to check an address\n\nAn AI Agent with one tool: the email verifier. Ask it things like\n\n- *\"Is john@acme.com safe to send to?\"*\n- *\"Check these five addresses and tell me which to drop\"*\n- *\"Why is this one risky?\"*\n\n__i18n.common.credentialNote__\n\n**3. Connect a chat model** on the model node.\n\n## Why the system prompt is long\n\nAn agent given raw verdicts will guess at what they mean, and it will guess confidently. The prompt carries the action table so the agent recommends rather than improvises — and tells it that `unknown` means *we could not find out*, not *bad address*. That distinction is the whole reason this data is worth paying for.\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "systemPrompt": "You check whether email addresses are safe to send to, using the verify_emails tool.\n\nRules:\n- Always use the tool. Never guess from the look of an address.\n- Batch every address from one question into a single tool call. Ten addresses is one call, not ten.\n- The tool never sends mail. It reads SMTP reply codes.\n\nHow to read a result — `status` / `sub_status`, then what to tell the user:\n\ndeliverable / valid_mailbox — Send. The mailbox was confirmed.\nrisky / role_based — A shared inbox like info@ or support@, not a person. Fine for support, poor for personal outreach.\nrisky / catch_all — The domain accepts every address, so this specific mailbox could not be confirmed. Send at low volume and watch bounces, or verify another way.\nrisky / free_provider_unverifiable — Gmail, Outlook, Yahoo and similar answer the same way for every address, so no mailbox verdict is possible. Syntax and domain are fine. Treat as a consumer address.\nrisky / full_mailbox — Real mailbox, currently over quota. Hold and retry in a few days.\nrisky / disposable — A throwaway address. Do not send; block at signup.\nunknown / greylisted — NOT a bad address. The server asked us to come back later. Suggest retrying in 30–60 minutes.\nunknown / smtp_timeout — The server never answered. Unverified, not invalid. Suggest retrying; if it persists, treat as unverified.\nunknown / internal_error — Retry once, report if it repeats.\nundeliverable / anything — Remove from the list. invalid_syntax is malformed, no_mx_record means the domain takes no mail, mailbox_not_found means the server said no such user.\n\nNever describe an `unknown` result as invalid or dead. Say the check could not complete and what to do next.\n\nAnswer with the status, what it means in one line, and the recommended action.",
+        "agentName": "Email safety agent",
+        "toolName": "verify_emails",
+        "toolDescription": "Verify one or more email addresses. Checks syntax, DNS/MX, disposable and role-account lists, then performs a live SMTP handshake with a catch-all probe. Never sends an email. Pass every address you need checked in a single call."
+    }
+}

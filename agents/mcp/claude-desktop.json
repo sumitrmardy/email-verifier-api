@@ -1,0 +1,23 @@
+{
+  "_comment": "claude_desktop_config.json. Pick ONE of the two entries below and delete the other — both are shown because which one works depends on your Claude Desktop version. Verify against Apify's current MCP docs; this format has changed before. Restart Claude Desktop after editing.",
+
+  "_option_1_oauth": "Remote URL, Claude handles sign-in. Nothing secret on disk. Try this first.",
+  "_option_2_bridge": "Local stdio bridge that adds the Authorization header, for versions that cannot send custom headers to a remote server.",
+
+  "mcpServers": {
+    "email-verifier": {
+      "url": "https://mcp.apify.com?tools=sumitr_mardy/email-verifier"
+    },
+
+    "email-verifier-with-token": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.apify.com?tools=sumitr_mardy/email-verifier",
+        "--header",
+        "Authorization: Bearer YOUR_APIFY_TOKEN"
+      ]
+    }
+  }
+}

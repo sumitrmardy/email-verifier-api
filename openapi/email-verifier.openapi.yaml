@@ -1,0 +1,232 @@
+openapi: 3.1.0
+
+# One operation, fully typed. This single file is what Dify, Coze, GPT Actions
+# and LangChain's OpenAPI toolkit import, so the descriptions are written for a
+# model to read rather than for a human to skim — an agent that does not know
+# the difference between `unknown` and `undeliverable` will give bad advice
+# confidently, and the schema is the only place to teach it.
+
+info:
+  title: Email Verifier
+  version: 1.0.0
+  description: |
+    Bulk email verification. Checks RFC 5322 syntax, DNS/MX records,
+    disposable and role-account lists, then performs a live SMTP handshake
+    with a mandatory catch-all probe.
+
+    It never sends an email. It opens an SMTP session, reads the reply codes
+    and disconnects — there is no message body in the process at all.
+
+    Batch every address you need into a single call. Deduplicate first:
+    duplicates are charged.
+  license:
+    name: MIT
+  contact:
+    url: https://github.com/sumitrmardy/email-verifier-api
+
+servers:
+  - url: https://api.apify.com/v2
+    description: Apify API
+
+security:
+  - apifyToken: []
+
+paths:
+  /acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items:
+    post:
+      operationId: verifyEmails
+      summary: Verify one or more email addresses
+      description: |
+        Returns one record per submitted address.
+
+        Results are NOT returned in submission order — addresses are grouped by
+        domain so SMTP connections can be reused. Match results back by `email`
+        or `normalized_email`, never by array position.
+
+        How to act on each result:
+
+        - `deliverable` / `valid_mailbox` — send; the mailbox was confirmed.
+        - `risky` / `role_based` — a shared inbox such as info@ or support@,
+          not a person.
+        - `risky` / `catch_all` — the domain accepts every address, so this
+          particular mailbox could not be confirmed. Send at low volume or
+          confirm another way.
+        - `risky` / `free_provider_unverifiable` — Gmail, Outlook, Yahoo and
+          iCloud answer identically for every address. Syntax and domain are
+          fine; the mailbox is unknowable over SMTP.
+        - `risky` / `full_mailbox` — a real mailbox that is currently over
+          quota. Hold and retry in a few days.
+        - `risky` / `disposable` — a throwaway address. Do not send.
+        - `unknown` / `greylisted` — NOT a bad address. The server asked us to
+          come back. Retry in 30 to 60 minutes.
+        - `unknown` / `smtp_timeout` — the server never answered. Unverified,
+          not invalid.
+        - `unknown` / `internal_error` — retry once; the `error` field explains.
+        - `undeliverable` / anything — remove the address from the list.
+
+        `undeliverable` means the address was found to be dead. `unknown` means
+        the check could not complete. Never report an `unknown` result as
+        invalid or undeliverable.
+
+        A synchronous run must finish within 300 seconds. For lists larger than
+        one call can handle in that time, start an asynchronous run instead and
+        fetch the dataset when it completes.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerifyRequest'
+            examples:
+              simple:
+                summary: A few addresses
+                value:
+                  emails:
+                    - john@example.com
+                    - someone@gmail.com
+                    - test@mailinator.com
+      responses:
+        '201':
+          description: One record per submitted address.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/VerificationResult'
+        '401':
+          description: Missing or invalid Apify token.
+        '402':
+          description: The account cannot be charged for the run.
+        '408':
+          description: The synchronous run exceeded 300 seconds. Send fewer addresses per call, or use an asynchronous run.
+
+components:
+  securitySchemes:
+    apifyToken:
+      type: http
+      scheme: bearer
+      description: An Apify API token, sent as `Authorization: Bearer <token>`.
+
+  schemas:
+    VerifyRequest:
+      type: object
+      properties:
+        emails:
+          type: array
+          items:
+            type: string
+          description: Addresses to verify. Put every address from the request in this one array rather than calling repeatedly.
+        emailFileUrl:
+          type: string
+          format: uri
+          description: Optional public URL of a .txt (one per line) or .csv file. Used in addition to `emails`.
+        concurrency:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 15
+          description: Parallel SMTP sessions. Addresses are grouped by domain first, so this is effectively "domains in flight".
+        smtpTimeoutMs:
+          type: integer
+          minimum: 2000
+          maximum: 20000
+          default: 8000
+        verbose:
+          type: boolean
+          default: false
+          description: Adds a `raw` object with per-layer detail. Useful for investigating one address, wasteful on a list.
+      anyOf:
+        - required: [emails]
+        - required: [emailFileUrl]
+
+    VerificationResult:
+      type: object
+      description: |
+        Every property listed as required is present on every record and is
+        never null, including when an earlier layer stopped the check. A check
+        that never ran is `false`, and the reason is in `sub_status`.
+      required:
+        - email
+        - normalized_email
+        - domain
+        - status
+        - sub_status
+        - score
+        - checks
+        - mx_record
+        - verified_at
+        - duration_ms
+      properties:
+        email:
+          type: string
+          description: Your input, echoed verbatim — including when it fails syntax. Use it to join results back to source rows.
+        normalized_email:
+          type: string
+          description: Lower-cased, `+tag` stripped, dots folded for Gmail. Empty string when unparseable, never null.
+        domain:
+          type: string
+        status:
+          type: string
+          enum: [deliverable, undeliverable, risky, unknown]
+        sub_status:
+          type: string
+          enum:
+            - valid_mailbox
+            - invalid_syntax
+            - no_mx_record
+            - mailbox_not_found
+            - catch_all
+            - disposable
+            - role_based
+            - full_mailbox
+            - free_provider_unverifiable
+            - greylisted
+            - smtp_timeout
+            - internal_error
+        score:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: A pure function of the verdict — no model, no randomness. Use `status` for decisions and `score` for ranking.
+        checks:
+          type: object
+          description: All eleven keys are present on every record.
+          required:
+            - syntax
+            - domain_exists
+            - mx_found
+            - a_record_fallback
+            - smtp_connectable
+            - mailbox_exists
+            - catch_all
+            - disposable
+            - role_based
+            - free_provider
+            - has_tag
+          properties:
+            syntax: { type: boolean }
+            domain_exists: { type: boolean }
+            mx_found: { type: boolean }
+            a_record_fallback: { type: boolean, description: No MX, but an A record — RFC 5321 implicit MX. }
+            smtp_connectable: { type: boolean }
+            mailbox_exists: { type: boolean, description: False on catch-all and free-provider domains, where it cannot honestly be confirmed. }
+            catch_all: { type: boolean }
+            disposable: { type: boolean }
+            role_based: { type: boolean }
+            free_provider: { type: boolean }
+            has_tag: { type: boolean }
+        mx_record:
+          type: string
+          description: Highest-priority MX host, or empty string. Never null.
+        verified_at:
+          type: string
+          format: date-time
+        duration_ms:
+          type: integer
+        error:
+          type: string
+          description: Present only on `unknown` / `internal_error`.
+        raw:
+          type: object
+          description: Present only when the request set `verbose: true`. Not part of the stable contract.

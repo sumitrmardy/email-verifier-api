@@ -1,0 +1,214 @@
+{
+  "name": "__i18n.t3.name__",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "__i18n.t3.sticky__",
+        "height": 880,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t3-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-140, -80]
+    },
+    {
+      "parameters": {
+        "content": "__i18n.t3.stickyRetry__",
+        "height": 380,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t3-sticky-retry",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1280, 300]
+    },
+    {
+      "parameters": {
+        "formTitle": "__i18n.t3.uploadName__",
+        "formDescription": "__i18n.common.neverSends__",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "CSV",
+              "fieldType": "file",
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t3-form",
+      "name": "__i18n.t3.uploadName__",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [340, 60],
+      "webhookId": "clean-email-csv"
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "t3-extract",
+      "name": "__i18n.t3.extractName__",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [560, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the email column, drop blanks and duplicates, cut into batches.\n// Deduplication is not tidiness — every duplicate is a charged event.\nconst BATCH_SIZE = 100;\nlet EMAIL_COLUMN = '';\n\nconst rows = $input.all().map((i) => i.json);\nif (rows.length === 0) return [];\n\n// First column whose name mentions email. Set EMAIL_COLUMN above to override.\nif (!EMAIL_COLUMN) {\n  const header = Object.keys(rows[0]);\n  EMAIL_COLUMN = header.find((h) => /e-?mail/i.test(h)) || header[0];\n}\n\nconst seen = new Set();\nconst emails = [];\nfor (const row of rows) {\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  const key = email.toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n  emails.push(email);\n}\n\nconst batches = [];\nfor (let i = 0; i < emails.length; i += BATCH_SIZE) {\n  batches.push({ json: { emails: emails.slice(i, i + BATCH_SIZE), column: EMAIL_COLUMN } });\n}\nreturn batches;"
+      },
+      "id": "t3-prepare",
+      "name": "__i18n.t3.prepareName__",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/__link.actorId__/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $json.emails }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "t3-verify",
+      "name": "__i18n.t3.verifyName__",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 60],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Greylisting is a server asking us to come back, not a bad address.\n// These are the only rows worth spending a second charge on.\nreturn $input.all().filter((i) => i.json.sub_status === 'greylisted');"
+      },
+      "id": "t3-greylisted",
+      "name": "__i18n.t3.waitName__",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, -60]
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "minutes"
+      },
+      "id": "t3-wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1480, -60],
+      "webhookId": "greylist-retry"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/__link.actorId__/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $input.all().map(i => i.json.email) }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "t3-retry",
+      "name": "__i18n.t3.retryName__",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1680, -60],
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Everything that already has a final answer goes straight through.\nreturn $input.all().filter((i) => i.json.sub_status !== 'greylisted');"
+      },
+      "id": "t3-settled",
+      "name": "Settled rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 160]
+    },
+    {
+      "parameters": {
+        "numberInputs": 2
+      },
+      "id": "t3-merge",
+      "name": "__i18n.t3.mergeName__",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1900, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Three lists, three files. The buckets are the point of the product:\n// 'review' is not a failure bucket, it is the set of addresses where an\n// honest tool refuses to pretend it knows.\nconst send = [];\nconst review = [];\nconst drop = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || !r.status) continue;\n  const row = {\n    email: r.email,\n    status: r.status,\n    sub_status: r.sub_status,\n    score: r.score,\n    catch_all: r.checks.catch_all,\n    disposable: r.checks.disposable,\n    role_based: r.checks.role_based,\n    free_provider: r.checks.free_provider,\n    mx_record: r.mx_record,\n    verified_at: r.verified_at\n  };\n  if (r.status === 'deliverable') send.push(row);\n  else if (r.status === 'undeliverable') drop.push(row);\n  else review.push(row); // risky and unknown both need a human decision\n}\n\nfunction toCsv(rows) {\n  if (rows.length === 0) return 'email,status,sub_status,score,catch_all,disposable,role_based,free_provider,mx_record,verified_at\\n';\n  const header = Object.keys(rows[0]);\n  const escape = (v) => {\n    const s = String(v ?? '');\n    return /[\",\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s;\n  };\n  return [header.join(','), ...rows.map((r) => header.map((h) => escape(r[h])).join(','))].join('\\n') + '\\n';\n}\n\nconst file = (name, rows) => ({\n  data: Buffer.from(toCsv(rows), 'utf8').toString('base64'),\n  mimeType: 'text/csv',\n  fileName: name,\n  fileExtension: 'csv'\n});\n\nreturn [{\n  json: { send_safe: send.length, review: review.length, drop: drop.length, total: send.length + review.length + drop.length },\n  binary: {\n    send_safe: file('__i18n.t3.sendFileName__', send),\n    review: file('__i18n.t3.reviewFileName__', review),\n    drop: file('__i18n.t3.dropFileName__', drop)\n  }\n}];"
+      },
+      "id": "t3-split",
+      "name": "__i18n.t3.splitName__",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2120, 60]
+    }
+  ],
+  "connections": {
+    "__i18n.t3.uploadName__": {
+      "main": [[{ "node": "__i18n.t3.extractName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t3.extractName__": {
+      "main": [[{ "node": "__i18n.t3.prepareName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t3.prepareName__": {
+      "main": [[{ "node": "__i18n.t3.verifyName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t3.verifyName__": {
+      "main": [[
+        { "node": "__i18n.t3.waitName__", "type": "main", "index": 0 },
+        { "node": "Settled rows", "type": "main", "index": 0 }
+      ]]
+    },
+    "__i18n.t3.waitName__": {
+      "main": [[{ "node": "Wait", "type": "main", "index": 0 }]]
+    },
+    "Wait": {
+      "main": [[{ "node": "__i18n.t3.retryName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t3.retryName__": {
+      "main": [[{ "node": "__i18n.t3.mergeName__", "type": "main", "index": 0 }]]
+    },
+    "Settled rows": {
+      "main": [[{ "node": "__i18n.t3.mergeName__", "type": "main", "index": 1 }]]
+    },
+    "__i18n.t3.mergeName__": {
+      "main": [[{ "node": "__i18n.t3.splitName__", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

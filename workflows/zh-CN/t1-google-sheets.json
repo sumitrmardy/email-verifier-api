@@ -1,0 +1,226 @@
+{
+  "name": "验证 Google Sheets 线索表（Email Verifier）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# 验证 Google Sheets 线索表\n\n读取 `status` 列为空的行，分批验证，把结果写回地址旁边。重复运行只会处理新增的行，因此可以安全地挂定时任务。\n\n## 表格需要这些列\n\n`email` · `status` · `sub_status` · `score` · `catch_all` · `disposable` · `verified_at`\n\n只有 `email` 需要你填，其余由工作流写入。\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n**3. 在两个 Google Sheets 节点上连接账号**，选择文档和工作表。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $2.00 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
+        "height": 860,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t1-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 为什么按地址匹配，而不是按行号\n\nActor 会按域名分组以复用连接，所以返回顺序和提交顺序不同。按位置匹配会把结论默默写到错误的人头上。\n\n工作流用 `email` 和 `normalized_email` 两个键建查找表。之所以要 `normalized_email`，是因为 Gmail 地址 `J.Doe+news@gmail.com` 返回时会变成 `jdoe@gmail.com`。",
+        "height": 340,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t1-sticky-why",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        280
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "t1-manual",
+      "name": "When clicking Execute",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        340,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "options": {}
+      },
+      "id": "t1-read",
+      "name": "读取未验证的行",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        560,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only rows that have an address and no verdict yet, then cut them into\n// batches. Re-running the workflow therefore picks up new rows only.\n//\n// BATCH_SIZE: a sync Apify run must finish inside 300 seconds. Measure your\n// own throughput before raising this — see docs/pricing-and-batching.md.\nconst BATCH_SIZE = 100;\nconst EMAIL_COLUMN = 'email';\nconst STATUS_COLUMN = 'status';\n\nconst pending = [];\nconst seen = new Set();\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  if (String(row[STATUS_COLUMN] ?? '').trim()) continue; // already verified\n  const key = email.toLowerCase();\n  if (seen.has(key)) continue; // never pay twice for the same address\n  seen.add(key);\n  pending.push(email);\n}\n\nif (pending.length === 0) {\n  return [];\n}\n\nconst batches = [];\nfor (let i = 0; i < pending.length; i += BATCH_SIZE) {\n  batches.push({ json: { emails: pending.slice(i, i + BATCH_SIZE), batch: batches.length + 1 } });\n}\n\nreturn batches;"
+      },
+      "id": "t1-chunk",
+      "name": "分批",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $json.emails }) }}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "t1-verify",
+      "name": "验证邮箱（Apify）",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Results come back grouped by domain, not in submission order, so build a\n// lookup instead of zipping by position. normalized_email is indexed too:\n// 'J.Doe+news@gmail.com' is returned as 'jdoe@gmail.com'.\nconst EMAIL_COLUMN = 'email';\n\nconst byAddress = new Map();\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || !r.email) continue;\n  byAddress.set(String(r.email).toLowerCase(), r);\n  if (r.normalized_email) byAddress.set(String(r.normalized_email).toLowerCase(), r);\n}\n\nconst rows = $('读取未验证的行').all();\nconst out = [];\n\nfor (const item of rows) {\n  const row = item.json;\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  const r = byAddress.get(email.toLowerCase());\n  if (!r) continue; // not part of this run\n\n  out.push({ json: {\n    ...row,\n    status: r.status,\n    sub_status: r.sub_status,\n    score: r.score,\n    catch_all: r.checks.catch_all,\n    disposable: r.checks.disposable,\n    verified_at: r.verified_at\n  } });\n}\n\nreturn out;"
+      },
+      "id": "t1-map",
+      "name": "把结论匹配回行",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": [
+            "email"
+          ],
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "t1-write",
+      "name": "写回表格",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [
+        1520,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "When clicking Execute": {
+      "main": [
+        [
+          {
+            "node": "读取未验证的行",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "读取未验证的行": {
+      "main": [
+        [
+          {
+            "node": "分批",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "分批": {
+      "main": [
+        [
+          {
+            "node": "验证邮箱（Apify）",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "验证邮箱（Apify）": {
+      "main": [
+        [
+          {
+            "node": "把结论匹配回行",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "把结论匹配回行": {
+      "main": [
+        [
+          {
+            "node": "写回表格",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

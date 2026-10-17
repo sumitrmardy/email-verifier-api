@@ -1,0 +1,14 @@
+{
+    "_comment": "Single source for every outbound link and the price string. Nothing else in the repo may hardcode these — scripts/build-workflows.mjs injects them, and scripts/validate.mjs fails the build if a hardcoded Apify URL or price appears anywhere else.",
+    "actorUrl": "https://apify.com/sumitr_mardy/email-verifier",
+    "actorPricingUrl": "https://apify.com/sumitr_mardy/email-verifier/pricing",
+    "actorApiUrl": "https://apify.com/sumitr_mardy/email-verifier/api",
+    "actorId": "sumitr_mardy~email-verifier",
+    "_affiliate": "Empty on purpose — the owner has not registered for the Apify Affiliate Program yet. When they do, put the exact parameter their dashboard gives (often '?fpr=<code>') here and rebuild; every link in the repo picks it up with no other edit. Leave it empty rather than guessing a format.",
+    "affiliateParam": "",
+    "repoUrl": "https://github.com/sumitrmardy/email-verifier-api",
+    "apifyConsoleUrl": "https://console.apify.com",
+    "apifyTokenUrl": "https://console.apify.com/settings/integrations",
+    "_price": "Pricing is tiered by the caller's Apify plan and the owner adjusts it to track the market, so no number may be typed anywhere else in the repo. This string is injected at build time and the Pricing tab is always linked next to it.",
+    "priceFromPer1k": "$2.00"
+}

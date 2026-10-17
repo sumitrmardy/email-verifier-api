@@ -1,0 +1,99 @@
+{
+  "name": "__i18n.t4.name__",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "__i18n.t4.sticky__",
+        "height": 800,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t4-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-140, -80]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "t4-chat",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [340, 60],
+      "webhookId": "email-safety-agent"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "__i18n.t4.systemPrompt__"
+        }
+      },
+      "id": "t4-agent",
+      "name": "__i18n.t4.agentName__",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [600, 60]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "t4-model",
+      "name": "Chat model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [520, 300]
+    },
+    {
+      "parameters": {
+        "toolDescription": "__i18n.t4.toolDescription__",
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/__link.actorId__/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"emails\": {emails}\n}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "emails",
+              "description": "A JSON array of the email addresses to verify, for example [\"a@example.com\",\"b@example.com\"]. Put every address from the user's question in this one array rather than calling the tool repeatedly.",
+              "type": "json"
+            }
+          ]
+        },
+        "optimizeResponse": false
+      },
+      "id": "t4-tool",
+      "name": "__i18n.t4.toolName__",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [760, 300],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [[{ "node": "__i18n.t4.agentName__", "type": "main", "index": 0 }]]
+    },
+    "Chat model": {
+      "ai_languageModel": [[{ "node": "__i18n.t4.agentName__", "type": "ai_languageModel", "index": 0 }]]
+    },
+    "__i18n.t4.toolName__": {
+      "ai_tool": [[{ "node": "__i18n.t4.agentName__", "type": "ai_tool", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

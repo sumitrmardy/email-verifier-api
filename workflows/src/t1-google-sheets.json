@@ -1,0 +1,160 @@
+{
+  "name": "__i18n.t1.name__",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "__i18n.t1.sticky__",
+        "height": 860,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t1-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-140, -80]
+    },
+    {
+      "parameters": {
+        "content": "__i18n.t1.stickyWhy__",
+        "height": 340,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t1-sticky-why",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [1080, 280]
+    },
+    {
+      "parameters": {},
+      "id": "t1-manual",
+      "name": "When clicking Execute",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [340, 60]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "options": {}
+      },
+      "id": "t1-read",
+      "name": "__i18n.t1.readName__",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [560, 60]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Keep only rows that have an address and no verdict yet, then cut them into\n// batches. Re-running the workflow therefore picks up new rows only.\n//\n// BATCH_SIZE: a sync Apify run must finish inside 300 seconds. Measure your\n// own throughput before raising this — see docs/pricing-and-batching.md.\nconst BATCH_SIZE = 100;\nconst EMAIL_COLUMN = 'email';\nconst STATUS_COLUMN = 'status';\n\nconst pending = [];\nconst seen = new Set();\n\nfor (const item of $input.all()) {\n  const row = item.json;\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  if (String(row[STATUS_COLUMN] ?? '').trim()) continue; // already verified\n  const key = email.toLowerCase();\n  if (seen.has(key)) continue; // never pay twice for the same address\n  seen.add(key);\n  pending.push(email);\n}\n\nif (pending.length === 0) {\n  return [];\n}\n\nconst batches = [];\nfor (let i = 0; i < pending.length; i += BATCH_SIZE) {\n  batches.push({ json: { emails: pending.slice(i, i + BATCH_SIZE), batch: batches.length + 1 } });\n}\n\nreturn batches;"
+      },
+      "id": "t1-chunk",
+      "name": "__i18n.t1.chunkName__",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 60]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/__link.actorId__/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $json.emails }) }}",
+        "options": {
+          "timeout": 300000,
+          "response": {
+            "response": {
+              "neverError": false
+            }
+          }
+        }
+      },
+      "id": "t1-verify",
+      "name": "__i18n.t1.verifyName__",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1040, 60],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Results come back grouped by domain, not in submission order, so build a\n// lookup instead of zipping by position. normalized_email is indexed too:\n// 'J.Doe+news@gmail.com' is returned as 'jdoe@gmail.com'.\nconst EMAIL_COLUMN = 'email';\n\nconst byAddress = new Map();\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || !r.email) continue;\n  byAddress.set(String(r.email).toLowerCase(), r);\n  if (r.normalized_email) byAddress.set(String(r.normalized_email).toLowerCase(), r);\n}\n\nconst rows = $('__i18n.t1.readName__').all();\nconst out = [];\n\nfor (const item of rows) {\n  const row = item.json;\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  const r = byAddress.get(email.toLowerCase());\n  if (!r) continue; // not part of this run\n\n  out.push({ json: {\n    ...row,\n    status: r.status,\n    sub_status: r.sub_status,\n    score: r.score,\n    catch_all: r.checks.catch_all,\n    disposable: r.checks.disposable,\n    verified_at: r.verified_at\n  } });\n}\n\nreturn out;"
+      },
+      "id": "t1-map",
+      "name": "__i18n.t1.mapName__",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1280, 60]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "",
+          "mode": "list",
+          "cachedResultName": ""
+        },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "matchingColumns": ["email"],
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "t1-write",
+      "name": "__i18n.t1.writeName__",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1520, 60]
+    }
+  ],
+  "connections": {
+    "When clicking Execute": {
+      "main": [[{ "node": "__i18n.t1.readName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t1.readName__": {
+      "main": [[{ "node": "__i18n.t1.chunkName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t1.chunkName__": {
+      "main": [[{ "node": "__i18n.t1.verifyName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t1.verifyName__": {
+      "main": [[{ "node": "__i18n.t1.mapName__", "type": "main", "index": 0 }]]
+    },
+    "__i18n.t1.mapName__": {
+      "main": [[{ "node": "__i18n.t1.writeName__", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

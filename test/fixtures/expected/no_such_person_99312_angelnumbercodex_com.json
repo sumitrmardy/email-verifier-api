@@ -1,0 +1,24 @@
+{
+    "email": "no.such.person.99312@angelnumbercodex.com",
+    "normalized_email": "no.such.person.99312@angelnumbercodex.com",
+    "domain": "angelnumbercodex.com",
+    "status": "undeliverable",
+    "sub_status": "mailbox_not_found",
+    "score": 5,
+    "checks": {
+        "syntax": true,
+        "domain_exists": true,
+        "mx_found": true,
+        "a_record_fallback": false,
+        "smtp_connectable": true,
+        "mailbox_exists": false,
+        "catch_all": false,
+        "disposable": false,
+        "role_based": false,
+        "free_provider": false,
+        "has_tag": false
+    },
+    "mx_record": "mx.tino.vn",
+    "verified_at": "2026-08-18T09:17:11.924Z",
+    "duration_ms": 1205
+}

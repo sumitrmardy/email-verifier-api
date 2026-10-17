@@ -1,0 +1,324 @@
+{
+  "name": "Clean a CSV list before cold email (Email Verifier)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Clean a CSV before you send\n\nUpload a CSV export — Apollo, Instantly, Lemlist, HubSpot, anything with an email column — and get back three lists:\n\n**send_safe** — SMTP confirmed the mailbox exists\n**review** — catch-all, role account, free provider, or full mailbox: real decisions, not failures\n**drop** — bad syntax, dead domain, no such mailbox\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n## The column\n\nThe first column whose name contains `email` is used. Change `EMAIL_COLUMN` in the first Code node to pick a different one.\n\nAddresses are sent in one batch per call, not one call per address. A sync Apify run has to finish inside 300 seconds, so keep batches at a size you have measured — see docs/pricing-and-batching.md.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $2.00 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
+        "height": 880,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t3-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Why there is a wait in the middle\n\n`unknown/greylisted` is not a bad address. Greylisting is a server deliberately rejecting a first attempt and accepting a retry — it is an anti-spam technique, and a verifier that reports those as undeliverable throws away good contacts.\n\nSo greylisted rows wait and are verified once more before the lists are written. Rows that are still unknown after the retry end up in **review**, which is the honest place for them.\n\nThe wait is 60 minutes by default. Shorter rarely helps; many servers want 15–60.",
+        "height": 380,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t3-sticky-retry",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "Upload CSV",
+        "formDescription": "This never sends an email. It opens an SMTP session, reads the reply codes and hangs up.",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "CSV",
+              "fieldType": "file",
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t3-form",
+      "name": "Upload CSV",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        340,
+        60
+      ],
+      "webhookId": "clean-email-csv"
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "t3-extract",
+      "name": "Read CSV rows",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        560,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the email column, drop blanks and duplicates, cut into batches.\n// Deduplication is not tidiness — every duplicate is a charged event.\nconst BATCH_SIZE = 100;\nlet EMAIL_COLUMN = '';\n\nconst rows = $input.all().map((i) => i.json);\nif (rows.length === 0) return [];\n\n// First column whose name mentions email. Set EMAIL_COLUMN above to override.\nif (!EMAIL_COLUMN) {\n  const header = Object.keys(rows[0]);\n  EMAIL_COLUMN = header.find((h) => /e-?mail/i.test(h)) || header[0];\n}\n\nconst seen = new Set();\nconst emails = [];\nfor (const row of rows) {\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  const key = email.toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n  emails.push(email);\n}\n\nconst batches = [];\nfor (let i = 0; i < emails.length; i += BATCH_SIZE) {\n  batches.push({ json: { emails: emails.slice(i, i + BATCH_SIZE), column: EMAIL_COLUMN } });\n}\nreturn batches;"
+      },
+      "id": "t3-prepare",
+      "name": "Dedupe and chunk",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $json.emails }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "t3-verify",
+      "name": "Verify emails (Apify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Greylisting is a server asking us to come back, not a bad address.\n// These are the only rows worth spending a second charge on.\nreturn $input.all().filter((i) => i.json.sub_status === 'greylisted');"
+      },
+      "id": "t3-greylisted",
+      "name": "Wait before retrying greylisted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "minutes"
+      },
+      "id": "t3-wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1480,
+        -60
+      ],
+      "webhookId": "greylist-retry"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $input.all().map(i => i.json.email) }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "t3-retry",
+      "name": "Re-verify greylisted (Apify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        -60
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Everything that already has a final answer goes straight through.\nreturn $input.all().filter((i) => i.json.sub_status !== 'greylisted');"
+      },
+      "id": "t3-settled",
+      "name": "Settled rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 2
+      },
+      "id": "t3-merge",
+      "name": "Merge retried rows",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1900,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Three lists, three files. The buckets are the point of the product:\n// 'review' is not a failure bucket, it is the set of addresses where an\n// honest tool refuses to pretend it knows.\nconst send = [];\nconst review = [];\nconst drop = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || !r.status) continue;\n  const row = {\n    email: r.email,\n    status: r.status,\n    sub_status: r.sub_status,\n    score: r.score,\n    catch_all: r.checks.catch_all,\n    disposable: r.checks.disposable,\n    role_based: r.checks.role_based,\n    free_provider: r.checks.free_provider,\n    mx_record: r.mx_record,\n    verified_at: r.verified_at\n  };\n  if (r.status === 'deliverable') send.push(row);\n  else if (r.status === 'undeliverable') drop.push(row);\n  else review.push(row); // risky and unknown both need a human decision\n}\n\nfunction toCsv(rows) {\n  if (rows.length === 0) return 'email,status,sub_status,score,catch_all,disposable,role_based,free_provider,mx_record,verified_at\\n';\n  const header = Object.keys(rows[0]);\n  const escape = (v) => {\n    const s = String(v ?? '');\n    return /[\",\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s;\n  };\n  return [header.join(','), ...rows.map((r) => header.map((h) => escape(r[h])).join(','))].join('\\n') + '\\n';\n}\n\nconst file = (name, rows) => ({\n  data: Buffer.from(toCsv(rows), 'utf8').toString('base64'),\n  mimeType: 'text/csv',\n  fileName: name,\n  fileExtension: 'csv'\n});\n\nreturn [{\n  json: { send_safe: send.length, review: review.length, drop: drop.length, total: send.length + review.length + drop.length },\n  binary: {\n    send_safe: file('send_safe.csv', send),\n    review: file('review.csv', review),\n    drop: file('drop.csv', drop)\n  }\n}];"
+      },
+      "id": "t3-split",
+      "name": "Split into send / review / drop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2120,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "Upload CSV": {
+      "main": [
+        [
+          {
+            "node": "Read CSV rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read CSV rows": {
+      "main": [
+        [
+          {
+            "node": "Dedupe and chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe and chunk": {
+      "main": [
+        [
+          {
+            "node": "Verify emails (Apify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify emails (Apify)": {
+      "main": [
+        [
+          {
+            "node": "Wait before retrying greylisted",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Settled rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait before retrying greylisted": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Re-verify greylisted (Apify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Re-verify greylisted (Apify)": {
+      "main": [
+        [
+          {
+            "node": "Merge retried rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settled rows": {
+      "main": [
+        [
+          {
+            "node": "Merge retried rows",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge retried rows": {
+      "main": [
+        [
+          {
+            "node": "Split into send / review / drop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

@@ -1,0 +1,18 @@
+{
+  "_comment": "Cursor MCP config. Project-level .cursor/mcp.json, or the global one in ~/.cursor/. Pick ONE entry and delete the other. Verify against Apify current MCP docs before relying on it.",
+  "mcpServers": {
+    "email-verifier": {
+      "url": "https://mcp.apify.com?tools=sumitr_mardy/email-verifier"
+    },
+    "email-verifier-with-token": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.apify.com?tools=sumitr_mardy/email-verifier",
+        "--header",
+        "Authorization: Bearer YOUR_APIFY_TOKEN"
+      ]
+    }
+  }
+}

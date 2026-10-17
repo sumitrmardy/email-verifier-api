@@ -1,0 +1,24 @@
+{
+    "email": "sumit@angelnumbercodex.com",
+    "normalized_email": "sumit@angelnumbercodex.com",
+    "domain": "angelnumbercodex.com",
+    "status": "deliverable",
+    "sub_status": "valid_mailbox",
+    "score": 100,
+    "checks": {
+        "syntax": true,
+        "domain_exists": true,
+        "mx_found": true,
+        "a_record_fallback": false,
+        "smtp_connectable": true,
+        "mailbox_exists": true,
+        "catch_all": false,
+        "disposable": false,
+        "role_based": false,
+        "free_provider": false,
+        "has_tag": false
+    },
+    "mx_record": "mx.tino.vn",
+    "verified_at": "2026-08-18T09:17:11.924Z",
+    "duration_ms": 1206
+}

@@ -1,0 +1,116 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://github.com/sumitrmardy/email-verifier-api/schema/output.schema.json",
+    "title": "Email Verifier — one result record",
+    "description": "One record per submitted address. This schema is deliberately strict: every field is required, no field is nullable, and both status fields are closed enums. That is the product's actual promise, so the schema states it rather than describing it loosely. If a response ever fails validation against this file, the response is wrong — not the schema.",
+    "type": "object",
+    "required": [
+        "email",
+        "normalized_email",
+        "domain",
+        "status",
+        "sub_status",
+        "score",
+        "checks",
+        "mx_record",
+        "verified_at",
+        "duration_ms"
+    ],
+    "properties": {
+        "email": {
+            "type": "string",
+            "description": "Your input, echoed verbatim — including when it fails syntax. Use this to join results back to your source rows."
+        },
+        "normalized_email": {
+            "type": "string",
+            "description": "Lower-cased, `+tag` stripped, dots folded for Gmail. Empty string when the address could not be parsed. Never null."
+        },
+        "domain": {
+            "type": "string",
+            "description": "Lower-cased domain, or empty string when unparseable. Never null."
+        },
+        "status": {
+            "type": "string",
+            "description": "The verdict. Exactly four values, forever — a caller can enumerate them once and stay correct.",
+            "enum": ["deliverable", "undeliverable", "risky", "unknown"]
+        },
+        "sub_status": {
+            "type": "string",
+            "description": "Why. Always populated, including when `status` is `deliverable`.",
+            "enum": [
+                "valid_mailbox",
+                "invalid_syntax",
+                "no_mx_record",
+                "mailbox_not_found",
+                "catch_all",
+                "disposable",
+                "role_based",
+                "full_mailbox",
+                "free_provider_unverifiable",
+                "greylisted",
+                "smtp_timeout",
+                "internal_error"
+            ]
+        },
+        "score": {
+            "type": "integer",
+            "description": "0–100, a pure function of status + sub_status. No model, no randomness: the same verdict scores the same today and in a year, which is what makes it cacheable and testable.",
+            "minimum": 0,
+            "maximum": 100
+        },
+        "checks": {
+            "type": "object",
+            "description": "All eleven keys are present on every record, whether or not the layer that sets them was reached. A check that never ran is `false`, and the reason lives in `sub_status`. This is the guarantee that lets a caller — human or agent — read a field without guarding it.",
+            "required": [
+                "syntax",
+                "domain_exists",
+                "mx_found",
+                "a_record_fallback",
+                "smtp_connectable",
+                "mailbox_exists",
+                "catch_all",
+                "disposable",
+                "role_based",
+                "free_provider",
+                "has_tag"
+            ],
+            "additionalProperties": false,
+            "properties": {
+                "syntax": { "type": "boolean", "description": "Passes RFC 5322." },
+                "domain_exists": { "type": "boolean", "description": "Domain resolves (MX or A)." },
+                "mx_found": { "type": "boolean", "description": "Domain publishes MX records." },
+                "a_record_fallback": { "type": "boolean", "description": "No MX, but an A record — RFC 5321 implicit MX." },
+                "smtp_connectable": { "type": "boolean", "description": "A session opened to the mail host." },
+                "mailbox_exists": { "type": "boolean", "description": "SMTP confirmed this specific mailbox. False on catch-all and free-provider domains, where it cannot honestly be confirmed." },
+                "catch_all": { "type": "boolean", "description": "Domain accepts every address, so no individual mailbox can be confirmed." },
+                "disposable": { "type": "boolean", "description": "Domain is on the public disposable/temp-mail blocklist." },
+                "role_based": { "type": "boolean", "description": "Shared inbox local part (info@, admin@, support@, …)." },
+                "free_provider": { "type": "boolean", "description": "Consumer mailbox provider (Gmail, Outlook, Yahoo, iCloud, …)." },
+                "has_tag": { "type": "boolean", "description": "The input carried a `+tag`." }
+            }
+        },
+        "mx_record": {
+            "type": "string",
+            "description": "Highest-priority MX host, or empty string when there is none. Never null."
+        },
+        "verified_at": {
+            "type": "string",
+            "description": "ISO 8601 timestamp.",
+            "format": "date-time"
+        },
+        "duration_ms": {
+            "type": "integer",
+            "description": "Wall-clock milliseconds spent on this address.",
+            "minimum": 0
+        },
+        "error": {
+            "type": "string",
+            "description": "Present ONLY on `unknown` / `internal_error`. Its absence is not something a caller needs to handle — check `sub_status` instead."
+        },
+        "raw": {
+            "type": "object",
+            "description": "Present ONLY when the request set `verbose: true`. Per-layer detail for investigation; not part of the stable contract and may change."
+        }
+    },
+    "additionalProperties": false
+}

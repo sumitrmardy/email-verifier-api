@@ -1,0 +1,56 @@
+{
+    "common": {
+        "credentialNote": "## 初次配置\n\n**1. 获取 Apify token** — __link.apifyTokenUrl__\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。",
+        "costNote": "## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 __link.priceFromPer1k__ 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：__link.actorPricingUrl__",
+        "actorNote": "Actor：__link.actorUrl__\n模板与文档：__link.repoUrl__",
+        "neverSends": "全程不发送任何邮件。只建立 SMTP 会话、读取响应码，然后断开。",
+        "batchNote": "地址是整批提交的，不是一个地址一次调用。Apify 同步请求必须在 300 秒内完成，所以批量大小要用实测值 —— 见 docs/pricing-and-batching.zh-CN.md。"
+    },
+
+    "t1": {
+        "name": "验证 Google Sheets 线索表（Email Verifier）",
+        "sticky": "# 验证 Google Sheets 线索表\n\n读取 `status` 列为空的行，分批验证，把结果写回地址旁边。重复运行只会处理新增的行，因此可以安全地挂定时任务。\n\n## 表格需要这些列\n\n`email` · `status` · `sub_status` · `score` · `catch_all` · `disposable` · `verified_at`\n\n只有 `email` 需要你填，其余由工作流写入。\n\n__i18n.common.credentialNote__\n\n**3. 在两个 Google Sheets 节点上连接账号**，选择文档和工作表。\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "stickyWhy": "## 为什么按地址匹配，而不是按行号\n\nActor 会按域名分组以复用连接，所以返回顺序和提交顺序不同。按位置匹配会把结论默默写到错误的人头上。\n\n工作流用 `email` 和 `normalized_email` 两个键建查找表。之所以要 `normalized_email`，是因为 Gmail 地址 `J.Doe+news@gmail.com` 返回时会变成 `jdoe@gmail.com`。",
+        "readName": "读取未验证的行",
+        "chunkName": "分批",
+        "verifyName": "验证邮箱（Apify）",
+        "mapName": "把结论匹配回行",
+        "writeName": "写回表格"
+    },
+
+    "t2": {
+        "name": "注册时拦截一次性邮箱（Email Verifier）",
+        "sticky": "# 注册实时校验\n\n向该 webhook POST `{ \"email\": \"someone@example.com\" }`，返回：\n\n```json\n{ \"decision\": \"allow\" | \"review\" | \"block\", \"reason\": \"...\", \"status\": \"...\", \"sub_status\": \"...\" }\n```\n\n**block** —— 格式错误、域名不存在、邮箱不存在，或一次性邮箱\n**review** —— 全收域名（catch-all）、角色邮箱，或无法确认具体邮箱的免费邮箱服务商\n**allow** —— SMTP 已确认邮箱存在\n\n__i18n.common.credentialNote__\n\n## 每次注册一次调用\n\n本模板每个请求调用一次 Actor，适合表单场景。处理名单请用 Google Sheets 或 CSV 模板 —— 批量提交的单价低得多。\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "stickyPolicy": "## 策略改在这里，不要改响应节点\n\n判定逻辑特意写成一小段 JavaScript：规则该由你定。B2B 产品通常允许 `role_based`，面向消费者的产品通常不允许；试用注册可能接受 `catch_all`，付费套餐可能不接受。\n\n`unknown` 表示这次没查出结果 —— 灰名单、超时之类。对 `unknown` 直接拦截，等于因为一次网络抖动拒掉真实客户，所以这里归入 `review`。",
+        "webhookName": "注册 webhook",
+        "verifyName": "验证邮箱（Apify）",
+        "decideName": "执行注册策略",
+        "respondName": "返回判定结果"
+    },
+
+    "t3": {
+        "name": "群发前清洗 CSV 名单（Email Verifier）",
+        "sticky": "# 群发前先清洗 CSV\n\n上传 CSV 导出文件 —— Apollo、Instantly、Lemlist、HubSpot，任何带邮箱列的都行 —— 得到三份名单：\n\n**send_safe** —— SMTP 已确认邮箱存在\n**review** —— 全收域名、角色邮箱、免费邮箱服务商、邮箱已满：这些是需要你判断的，不是失败\n**drop** —— 格式错误、域名不存在、邮箱不存在\n\n__i18n.common.credentialNote__\n\n## 关于列名\n\n默认取第一个列名包含 `email` 的列。要换列，改第一个 Code 节点里的 `EMAIL_COLUMN`。\n\n__i18n.common.batchNote__\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "stickyRetry": "## 中间为什么要等一段时间\n\n`unknown/greylisted` 不是坏地址。灰名单是服务器故意拒绝第一次投递、接受重试的反垃圾手段 —— 把这类判成不可投递，等于白白丢掉有效联系人。\n\n所以灰名单的行会等待后再验证一次，然后才写入名单。重试后仍是 unknown 的进 **review**，这是它们该待的地方。\n\n默认等待 60 分钟。再短通常没用，很多服务器要求 15–60 分钟。",
+        "uploadName": "上传 CSV",
+        "extractName": "读取 CSV 行",
+        "prepareName": "去重并分批",
+        "verifyName": "验证邮箱（Apify）",
+        "splitName": "分成 send / review / drop",
+        "waitName": "等待后重试灰名单",
+        "retryName": "重新验证灰名单（Apify）",
+        "mergeName": "合并重试结果",
+        "sendFileName": "send_safe.csv",
+        "reviewFileName": "review.csv",
+        "dropFileName": "drop.csv"
+    },
+
+    "t4": {
+        "name": "AI Agent 工具：这个邮箱能发吗？（Email Verifier）",
+        "sticky": "# 给 Agent 一个查邮箱的能力\n\n一个只带邮箱验证工具的 AI Agent。可以这样问：\n\n- *\"john@acme.com 能发吗？\"*\n- *\"查这五个地址，告诉我哪些该删\"*\n- *\"这个为什么算 risky？\"*\n\n__i18n.common.credentialNote__\n\n**3. 在模型节点上连接一个 chat model。**\n\n## 为什么 system prompt 这么长\n\n只给 Agent 原始结论，它会自己猜含义，而且猜得很笃定。prompt 里带了处置对照表，让它给建议而不是即兴发挥 —— 并且明确告诉它 `unknown` 的意思是*没查出来*，不是*坏地址*。这个区分正是这份数据值得付费的原因。\n\n__i18n.common.costNote__\n\n__i18n.common.actorNote__",
+        "systemPrompt": "你负责判断邮箱地址是否可以安全发送，使用 verify_emails 工具完成。\n\n规则：\n- 必须调用工具，不要凭地址长相猜测。\n- 一个问题里的所有地址合并成一次调用。十个地址是一次调用，不是十次。\n- 该工具不发送邮件，只读取 SMTP 响应码。\n\n结果怎么读 —— `status` / `sub_status`，以及该告诉用户什么：\n\ndeliverable / valid_mailbox —— 可以发，邮箱已确认存在。\nrisky / role_based —— 角色邮箱，如 info@、support@，不是具体的人。客服场景可以，个人触达效果差。\nrisky / catch_all —— 该域名全收，所以无法确认这个具体邮箱。可小量发送并观察退信，或换别的方式核实。\nrisky / free_provider_unverifiable —— Gmail、Outlook、Yahoo 这类对任何地址都返回同样结果，无法给出邮箱结论。格式和域名没问题，按个人邮箱对待。\nrisky / full_mailbox —— 邮箱真实存在，但当前已满。先搁置，几天后重试。\nrisky / disposable —— 一次性邮箱。不要发；注册环节应直接拦截。\nunknown / greylisted —— **不是**坏地址。服务器要求稍后再来。建议 30–60 分钟后重试。\nunknown / smtp_timeout —— 服务器没有响应。属于未验证，不是无效。建议重试；若持续如此，按未验证处理。\nunknown / internal_error —— 重试一次，若反复出现请反馈。\nundeliverable / 任意 —— 从名单中移除。invalid_syntax 是格式错误，no_mx_record 表示该域名不收邮件，mailbox_not_found 表示服务器明确回复没有这个用户。\n\n绝对不要把 `unknown` 说成无效或已失效。要说明这次没能查出结果，以及下一步该做什么。\n\n回答时给出 status、一句话解释，以及建议的处置方式。",
+        "agentName": "邮箱安全判断 Agent",
+        "toolName": "verify_emails",
+        "toolDescription": "验证一个或多个邮箱地址。检查格式、DNS/MX、一次性邮箱与角色邮箱名单，然后进行真实的 SMTP 握手并探测全收域名。不发送任何邮件。需要检查的地址请一次性全部传入。"
+    }
+}

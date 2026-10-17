@@ -1,0 +1,33 @@
+# Smoke-test list. Public, non-personal addresses chosen so that between them
+# they exercise most branches of the decision tree. Kept short on purpose:
+# every line costs one charged event when scripts/smoke-test.mjs runs.
+#
+# Four of these already have recorded output in expected/ — measured, not
+# assumed. The rest are filled in the first time the smoke test runs.
+#
+# Never add the owner's company domain here: bulk SMTP probing a domain you
+# actually send business mail from is how an IP or a domain gets flagged.
+
+# --- syntax (never leaves the process, costs nothing to be generous with) ---
+plainaddress
+user@
+two..dots@example.com
+
+# --- domain does not resolve ---
+someone@never-exists-xyz-9f2k.com
+
+# --- disposable ---
+test@mailinator.com
+
+# --- free provider: reachable, but no mailbox verdict is possible ---
+someone@gmail.com
+
+# --- catch-all domain: accepts everything, so nothing can be confirmed ---
+zz-catchall-a1@stripe.com
+
+# --- role address that exists ---
+admin@angelnumbercodex.com
+
+# --- the money path: a real mailbox, and one that is definitely absent ---
+sumit@angelnumbercodex.com
+no.such.person.99312@angelnumbercodex.com

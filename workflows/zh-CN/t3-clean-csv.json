@@ -1,0 +1,324 @@
+{
+  "name": "群发前清洗 CSV 名单（Email Verifier）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# 群发前先清洗 CSV\n\n上传 CSV 导出文件 —— Apollo、Instantly、Lemlist、HubSpot，任何带邮箱列的都行 —— 得到三份名单：\n\n**send_safe** —— SMTP 已确认邮箱存在\n**review** —— 全收域名、角色邮箱、免费邮箱服务商、邮箱已满：这些是需要你判断的，不是失败\n**drop** —— 格式错误、域名不存在、邮箱不存在\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n## 关于列名\n\n默认取第一个列名包含 `email` 的列。要换列，改第一个 Code 节点里的 `EMAIL_COLUMN`。\n\n地址是整批提交的，不是一个地址一次调用。Apify 同步请求必须在 300 秒内完成，所以批量大小要用实测值 —— 见 docs/pricing-and-batching.zh-CN.md。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $2.00 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
+        "height": 880,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t3-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 中间为什么要等一段时间\n\n`unknown/greylisted` 不是坏地址。灰名单是服务器故意拒绝第一次投递、接受重试的反垃圾手段 —— 把这类判成不可投递，等于白白丢掉有效联系人。\n\n所以灰名单的行会等待后再验证一次，然后才写入名单。重试后仍是 unknown 的进 **review**，这是它们该待的地方。\n\n默认等待 60 分钟。再短通常没用，很多服务器要求 15–60 分钟。",
+        "height": 380,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t3-sticky-retry",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        1280,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "formTitle": "上传 CSV",
+        "formDescription": "全程不发送任何邮件。只建立 SMTP 会话、读取响应码，然后断开。",
+        "formFields": {
+          "values": [
+            {
+              "fieldLabel": "CSV",
+              "fieldType": "file",
+              "acceptFileTypes": ".csv",
+              "requiredField": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t3-form",
+      "name": "上传 CSV",
+      "type": "n8n-nodes-base.formTrigger",
+      "typeVersion": 2.2,
+      "position": [
+        340,
+        60
+      ],
+      "webhookId": "clean-email-csv"
+    },
+    {
+      "parameters": {
+        "operation": "csv",
+        "options": {}
+      },
+      "id": "t3-extract",
+      "name": "读取 CSV 行",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        560,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Find the email column, drop blanks and duplicates, cut into batches.\n// Deduplication is not tidiness — every duplicate is a charged event.\nconst BATCH_SIZE = 100;\nlet EMAIL_COLUMN = '';\n\nconst rows = $input.all().map((i) => i.json);\nif (rows.length === 0) return [];\n\n// First column whose name mentions email. Set EMAIL_COLUMN above to override.\nif (!EMAIL_COLUMN) {\n  const header = Object.keys(rows[0]);\n  EMAIL_COLUMN = header.find((h) => /e-?mail/i.test(h)) || header[0];\n}\n\nconst seen = new Set();\nconst emails = [];\nfor (const row of rows) {\n  const email = String(row[EMAIL_COLUMN] ?? '').trim();\n  if (!email) continue;\n  const key = email.toLowerCase();\n  if (seen.has(key)) continue;\n  seen.add(key);\n  emails.push(email);\n}\n\nconst batches = [];\nfor (let i = 0; i < emails.length; i += BATCH_SIZE) {\n  batches.push({ json: { emails: emails.slice(i, i + BATCH_SIZE), column: EMAIL_COLUMN } });\n}\nreturn batches;"
+      },
+      "id": "t3-prepare",
+      "name": "去重并分批",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $json.emails }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "t3-verify",
+      "name": "验证邮箱（Apify）",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Greylisting is a server asking us to come back, not a bad address.\n// These are the only rows worth spending a second charge on.\nreturn $input.all().filter((i) => i.json.sub_status === 'greylisted');"
+      },
+      "id": "t3-greylisted",
+      "name": "等待后重试灰名单",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "amount": 60,
+        "unit": "minutes"
+      },
+      "id": "t3-wait",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        1480,
+        -60
+      ],
+      "webhookId": "greylist-retry"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: $input.all().map(i => i.json.email) }) }}",
+        "options": {
+          "timeout": 300000
+        }
+      },
+      "id": "t3-retry",
+      "name": "重新验证灰名单（Apify）",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        -60
+      ],
+      "executeOnce": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Everything that already has a final answer goes straight through.\nreturn $input.all().filter((i) => i.json.sub_status !== 'greylisted');"
+      },
+      "id": "t3-settled",
+      "name": "Settled rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1280,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "numberInputs": 2
+      },
+      "id": "t3-merge",
+      "name": "合并重试结果",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        1900,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Three lists, three files. The buckets are the point of the product:\n// 'review' is not a failure bucket, it is the set of addresses where an\n// honest tool refuses to pretend it knows.\nconst send = [];\nconst review = [];\nconst drop = [];\n\nfor (const item of $input.all()) {\n  const r = item.json;\n  if (!r || !r.status) continue;\n  const row = {\n    email: r.email,\n    status: r.status,\n    sub_status: r.sub_status,\n    score: r.score,\n    catch_all: r.checks.catch_all,\n    disposable: r.checks.disposable,\n    role_based: r.checks.role_based,\n    free_provider: r.checks.free_provider,\n    mx_record: r.mx_record,\n    verified_at: r.verified_at\n  };\n  if (r.status === 'deliverable') send.push(row);\n  else if (r.status === 'undeliverable') drop.push(row);\n  else review.push(row); // risky and unknown both need a human decision\n}\n\nfunction toCsv(rows) {\n  if (rows.length === 0) return 'email,status,sub_status,score,catch_all,disposable,role_based,free_provider,mx_record,verified_at\\n';\n  const header = Object.keys(rows[0]);\n  const escape = (v) => {\n    const s = String(v ?? '');\n    return /[\",\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s;\n  };\n  return [header.join(','), ...rows.map((r) => header.map((h) => escape(r[h])).join(','))].join('\\n') + '\\n';\n}\n\nconst file = (name, rows) => ({\n  data: Buffer.from(toCsv(rows), 'utf8').toString('base64'),\n  mimeType: 'text/csv',\n  fileName: name,\n  fileExtension: 'csv'\n});\n\nreturn [{\n  json: { send_safe: send.length, review: review.length, drop: drop.length, total: send.length + review.length + drop.length },\n  binary: {\n    send_safe: file('send_safe.csv', send),\n    review: file('review.csv', review),\n    drop: file('drop.csv', drop)\n  }\n}];"
+      },
+      "id": "t3-split",
+      "name": "分成 send / review / drop",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2120,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "上传 CSV": {
+      "main": [
+        [
+          {
+            "node": "读取 CSV 行",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "读取 CSV 行": {
+      "main": [
+        [
+          {
+            "node": "去重并分批",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "去重并分批": {
+      "main": [
+        [
+          {
+            "node": "验证邮箱（Apify）",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "验证邮箱（Apify）": {
+      "main": [
+        [
+          {
+            "node": "等待后重试灰名单",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Settled rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "等待后重试灰名单": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "重新验证灰名单（Apify）",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "重新验证灰名单（Apify）": {
+      "main": [
+        [
+          {
+            "node": "合并重试结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Settled rows": {
+      "main": [
+        [
+          {
+            "node": "合并重试结果",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "合并重试结果": {
+      "main": [
+        [
+          {
+            "node": "分成 send / review / drop",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

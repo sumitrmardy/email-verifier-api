@@ -1,0 +1,148 @@
+{
+  "name": "注册时拦截一次性邮箱（Email Verifier）",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# 注册实时校验\n\n向该 webhook POST `{ \"email\": \"someone@example.com\" }`，返回：\n\n```json\n{ \"decision\": \"allow\" | \"review\" | \"block\", \"reason\": \"...\", \"status\": \"...\", \"sub_status\": \"...\" }\n```\n\n**block** —— 格式错误、域名不存在、邮箱不存在，或一次性邮箱\n**review** —— 全收域名（catch-all）、角色邮箱，或无法确认具体邮箱的免费邮箱服务商\n**allow** —— SMTP 已确认邮箱存在\n\n## 初次配置\n\n**1. 获取 Apify token** — https://console.apify.com/settings/integrations\n\n**2. 在 n8n 中创建凭证**\nCredentials → New → **Header Auth**\n- 名称填：`Apify API`\n- Header name：`Authorization`\n- Header value：`Bearer 你的_APIFY_TOKEN`\n\n本文件中的 HTTP 节点都按名称引用该凭证，文件里不含任何 token。\n\n## 每次注册一次调用\n\n本模板每个请求调用一次 Actor，适合表单场景。处理名单请用 Google Sheets 或 CSV 模板 —— 批量提交的单价低得多。\n\n## 计费\n\n按次计费：每个得出结论的地址计费一次，包括 undeliverable 和 unknown —— 这两类同样消耗了验证过程。每 1,000 个地址 $2.00 起，具体单价按你的 Apify 套餐分层。\n\n当前价格：https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor：https://apify.com/sumitr_mardy/email-verifier\n模板与文档：https://github.com/sumitrmardy/email-verifier-api",
+        "height": 760,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t2-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## 策略改在这里，不要改响应节点\n\n判定逻辑特意写成一小段 JavaScript：规则该由你定。B2B 产品通常允许 `role_based`，面向消费者的产品通常不允许；试用注册可能接受 `catch_all`，付费套餐可能不接受。\n\n`unknown` 表示这次没查出结果 —— 灰名单、超时之类。对 `unknown` 直接拦截，等于因为一次网络抖动拒掉真实客户，所以这里归入 `review`。",
+        "height": 320,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t2-sticky-policy",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "signup-email-check",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "t2-webhook",
+      "name": "注册 webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        360,
+        60
+      ],
+      "webhookId": "signup-email-check"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: [ ($json.body && $json.body.email) || $json.email || '' ] }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "t2-verify",
+      "name": "验证邮箱（Apify）",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Your policy lives here. Edit this, not the response node.\n//\n// The Actor returns one record per address; we sent one, so take the first.\n// Every field below is guaranteed present — no optional chaining needed,\n// which is the whole point of the output contract.\n\nconst r = $input.first().json;\n\nif (!r || !r.status) {\n  return [{ json: { decision: 'review', reason: 'no verdict returned', status: 'unknown', sub_status: 'internal_error' } }];\n}\n\nlet decision;\nlet reason;\n\nif (r.status === 'undeliverable') {\n  decision = 'block';\n  reason = r.sub_status === 'invalid_syntax' ? 'not a valid address'\n    : r.sub_status === 'no_mx_record' ? 'that domain does not accept email'\n    : 'no mailbox with that name';\n} else if (r.checks.disposable) {\n  decision = 'block';\n  reason = 'disposable address';\n} else if (r.status === 'deliverable') {\n  decision = 'allow';\n  reason = 'mailbox confirmed';\n} else if (r.status === 'unknown') {\n  // Could not find out — greylisting, a timeout. Blocking here turns a\n  // network hiccup into a lost signup.\n  decision = 'review';\n  reason = 'could not complete the check, try again later';\n} else {\n  decision = 'review';\n  reason = r.sub_status === 'catch_all' ? 'domain accepts all addresses, mailbox unconfirmed'\n    : r.sub_status === 'role_based' ? 'shared inbox, not a person'\n    : r.sub_status === 'free_provider_unverifiable' ? 'consumer provider, mailbox unverifiable'\n    : r.sub_status === 'full_mailbox' ? 'mailbox is full'\n    : r.sub_status;\n}\n\nreturn [{ json: {\n  decision,\n  reason,\n  email: r.email,\n  status: r.status,\n  sub_status: r.sub_status,\n  score: r.score,\n  disposable: r.checks.disposable,\n  role_based: r.checks.role_based,\n  catch_all: r.checks.catch_all\n} }];"
+      },
+      "id": "t2-decide",
+      "name": "执行注册策略",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "t2-respond",
+      "name": "返回判定结果",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "注册 webhook": {
+      "main": [
+        [
+          {
+            "node": "验证邮箱（Apify）",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "验证邮箱（Apify）": {
+      "main": [
+        [
+          {
+            "node": "执行注册策略",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "执行注册策略": {
+      "main": [
+        [
+          {
+            "node": "返回判定结果",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

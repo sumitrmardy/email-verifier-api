@@ -1,0 +1,148 @@
+{
+  "name": "Block disposable emails at signup (Email Verifier)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Real-time signup check\n\nPOST `{ \"email\": \"someone@example.com\" }` to this webhook. It answers:\n\n```json\n{ \"decision\": \"allow\" | \"review\" | \"block\", \"reason\": \"...\", \"status\": \"...\", \"sub_status\": \"...\" }\n```\n\n**block** — invalid syntax, dead domain, no such mailbox, or a disposable address\n**review** — catch-all, role account, or a free provider whose mailbox cannot be confirmed\n**allow** — SMTP confirmed the mailbox exists\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n## One run per signup\n\nThis calls the Actor once per request, which suits a form. For a list, use the Google Sheets or CSV template instead — batching is far cheaper per address.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $2.00 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
+        "height": 760,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t2-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -120,
+        -60
+      ]
+    },
+    {
+      "parameters": {
+        "content": "## Change the policy here, not in the response node\n\nThe decision is one small block of JavaScript on purpose: your rules are not ours. A B2B product usually wants `role_based` allowed; a consumer app usually does not. A trial signup might accept `catch_all`; a paid plan might not.\n\n`unknown` means the check could not complete — greylisting, a timeout. Blocking on `unknown` rejects real customers for a network hiccup, so it is `review` here.",
+        "height": 320,
+        "width": 420,
+        "color": 7
+      },
+      "id": "t2-sticky-policy",
+      "name": "Sticky Note1",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        880,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "signup-email-check",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "t2-webhook",
+      "name": "Signup webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        360,
+        60
+      ],
+      "webhookId": "signup-email-check"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ emails: [ ($json.body && $json.body.email) || $json.email || '' ] }) }}",
+        "options": {
+          "timeout": 120000
+        }
+      },
+      "id": "t2-verify",
+      "name": "Verify email (Apify)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        600,
+        60
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Your policy lives here. Edit this, not the response node.\n//\n// The Actor returns one record per address; we sent one, so take the first.\n// Every field below is guaranteed present — no optional chaining needed,\n// which is the whole point of the output contract.\n\nconst r = $input.first().json;\n\nif (!r || !r.status) {\n  return [{ json: { decision: 'review', reason: 'no verdict returned', status: 'unknown', sub_status: 'internal_error' } }];\n}\n\nlet decision;\nlet reason;\n\nif (r.status === 'undeliverable') {\n  decision = 'block';\n  reason = r.sub_status === 'invalid_syntax' ? 'not a valid address'\n    : r.sub_status === 'no_mx_record' ? 'that domain does not accept email'\n    : 'no mailbox with that name';\n} else if (r.checks.disposable) {\n  decision = 'block';\n  reason = 'disposable address';\n} else if (r.status === 'deliverable') {\n  decision = 'allow';\n  reason = 'mailbox confirmed';\n} else if (r.status === 'unknown') {\n  // Could not find out — greylisting, a timeout. Blocking here turns a\n  // network hiccup into a lost signup.\n  decision = 'review';\n  reason = 'could not complete the check, try again later';\n} else {\n  decision = 'review';\n  reason = r.sub_status === 'catch_all' ? 'domain accepts all addresses, mailbox unconfirmed'\n    : r.sub_status === 'role_based' ? 'shared inbox, not a person'\n    : r.sub_status === 'free_provider_unverifiable' ? 'consumer provider, mailbox unverifiable'\n    : r.sub_status === 'full_mailbox' ? 'mailbox is full'\n    : r.sub_status;\n}\n\nreturn [{ json: {\n  decision,\n  reason,\n  email: r.email,\n  status: r.status,\n  sub_status: r.sub_status,\n  score: r.score,\n  disposable: r.checks.disposable,\n  role_based: r.checks.role_based,\n  catch_all: r.checks.catch_all\n} }];"
+      },
+      "id": "t2-decide",
+      "name": "Apply signup policy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        840,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "allIncomingItems",
+        "options": {}
+      },
+      "id": "t2-respond",
+      "name": "Respond with decision",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        1080,
+        60
+      ]
+    }
+  ],
+  "connections": {
+    "Signup webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify email (Apify)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify email (Apify)": {
+      "main": [
+        [
+          {
+            "node": "Apply signup policy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Apply signup policy": {
+      "main": [
+        [
+          {
+            "node": "Respond with decision",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

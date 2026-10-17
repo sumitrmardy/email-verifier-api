@@ -1,0 +1,138 @@
+{
+  "name": "AI agent tool: is this email safe to send? (Email Verifier)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "# Give an agent the ability to check an address\n\nAn AI Agent with one tool: the email verifier. Ask it things like\n\n- *\"Is john@acme.com safe to send to?\"*\n- *\"Check these five addresses and tell me which to drop\"*\n- *\"Why is this one risky?\"*\n\n## Setup (once)\n\n**1. Get an Apify token** — https://console.apify.com/settings/integrations\n\n**2. Create the n8n credential**\nCredentials → New → **Header Auth**\n- Name: `Apify API`\n- Header name: `Authorization`\n- Header value: `Bearer YOUR_APIFY_TOKEN`\n\nEvery HTTP node here already points at that credential by name. No token is stored in this file.\n\n**3. Connect a chat model** on the model node.\n\n## Why the system prompt is long\n\nAn agent given raw verdicts will guess at what they mean, and it will guess confidently. The prompt carries the action table so the agent recommends rather than improvises — and tells it that `unknown` means *we could not find out*, not *bad address*. That distinction is the whole reason this data is worth paying for.\n\n## Cost\n\nPay-per-event: one charge per address that gets a verdict, including undeliverable and unknown — the work was done either way. From $2.00 per 1,000, tiered by your Apify plan.\n\nCurrent pricing: https://apify.com/sumitr_mardy/email-verifier/pricing\n\nActor: https://apify.com/sumitr_mardy/email-verifier\nTemplates & docs: https://github.com/sumitrmardy/email-verifier-api",
+        "height": 800,
+        "width": 420,
+        "color": 4
+      },
+      "id": "t4-sticky-main",
+      "name": "Sticky Note",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "t4-chat",
+      "name": "When chat message received",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        340,
+        60
+      ],
+      "webhookId": "email-safety-agent"
+    },
+    {
+      "parameters": {
+        "options": {
+          "systemMessage": "You check whether email addresses are safe to send to, using the verify_emails tool.\n\nRules:\n- Always use the tool. Never guess from the look of an address.\n- Batch every address from one question into a single tool call. Ten addresses is one call, not ten.\n- The tool never sends mail. It reads SMTP reply codes.\n\nHow to read a result — `status` / `sub_status`, then what to tell the user:\n\ndeliverable / valid_mailbox — Send. The mailbox was confirmed.\nrisky / role_based — A shared inbox like info@ or support@, not a person. Fine for support, poor for personal outreach.\nrisky / catch_all — The domain accepts every address, so this specific mailbox could not be confirmed. Send at low volume and watch bounces, or verify another way.\nrisky / free_provider_unverifiable — Gmail, Outlook, Yahoo and similar answer the same way for every address, so no mailbox verdict is possible. Syntax and domain are fine. Treat as a consumer address.\nrisky / full_mailbox — Real mailbox, currently over quota. Hold and retry in a few days.\nrisky / disposable — A throwaway address. Do not send; block at signup.\nunknown / greylisted — NOT a bad address. The server asked us to come back later. Suggest retrying in 30–60 minutes.\nunknown / smtp_timeout — The server never answered. Unverified, not invalid. Suggest retrying; if it persists, treat as unverified.\nunknown / internal_error — Retry once, report if it repeats.\nundeliverable / anything — Remove from the list. invalid_syntax is malformed, no_mx_record means the domain takes no mail, mailbox_not_found means the server said no such user.\n\nNever describe an `unknown` result as invalid or dead. Say the check could not complete and what to do next.\n\nAnswer with the status, what it means in one line, and the recommended action."
+        }
+      },
+      "id": "t4-agent",
+      "name": "Email safety agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        600,
+        60
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "t4-model",
+      "name": "Chat model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "toolDescription": "Verify one or more email addresses. Checks syntax, DNS/MX, disposable and role-account lists, then performs a live SMTP handshake with a catch-all probe. Never sends an email. Pass every address you need checked in a single call.",
+        "method": "POST",
+        "url": "https://api.apify.com/v2/acts/sumitr_mardy~email-verifier/run-sync-get-dataset-items",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"emails\": {emails}\n}",
+        "placeholderDefinitions": {
+          "values": [
+            {
+              "name": "emails",
+              "description": "A JSON array of the email addresses to verify, for example [\"a@example.com\",\"b@example.com\"]. Put every address from the user's question in this one array rather than calling the tool repeatedly.",
+              "type": "json"
+            }
+          ]
+        },
+        "optimizeResponse": false
+      },
+      "id": "t4-tool",
+      "name": "verify_emails",
+      "type": "@n8n/n8n-nodes-langchain.toolHttpRequest",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        300
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "apify-api",
+          "name": "Apify API"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "When chat message received": {
+      "main": [
+        [
+          {
+            "node": "Email safety agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Chat model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Email safety agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "verify_emails": {
+      "ai_tool": [
+        [
+          {
+            "node": "Email safety agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "pinData": {}
+}

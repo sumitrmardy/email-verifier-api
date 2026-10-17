@@ -1,0 +1,12 @@
+node_modules/
+.env
+.env.*
+*.log
+.DS_Store
+.idea/
+.vscode/
+
+# Smoke-test output lands in test/fixtures/expected and IS committed on purpose:
+# recorded real responses are the evidence that the published schema is right.
+# Anything else the scripts produce is not.
+scratch/
